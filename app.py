@@ -2,6 +2,7 @@
 """
 🚀 Production AI Shorts Generator API for Render
 Real video processing with yt-dlp, MoviePy, and OpenAI GPT-4
+Now includes AI-generated titles and hooks!
 """
 
 import os
@@ -97,7 +98,8 @@ class ProductionShortsGenerator:
                             "path": video_path,
                             "title": info.get('title', 'Unknown'),
                             "duration": info.get('duration', 0),
-                            "file_size_mb": round(file_size, 2)
+                            "file_size_mb": round(file_size, 2),
+                            "description": info.get('description', '')[:500] + "..." if info.get('description', '') else ""
                         }
             
             return {"error": "No video file found after download"}
@@ -136,7 +138,8 @@ class ProductionShortsGenerator:
                 "path": video_path,
                 "title": f"Google Drive Video {file_id}",
                 "duration": 0,  # Will be detected by MoviePy
-                "file_size_mb": round(file_size, 2)
+                "file_size_mb": round(file_size, 2),
+                "description": "Google Drive video content"
             }
             
         except Exception as e:
@@ -144,9 +147,9 @@ class ProductionShortsGenerator:
             return {"error": f"Google Drive download failed: {str(e)}"}
     
     def analyze_video_with_ai(self, video_path, video_info):
-        """Use GPT-4 to analyze video and find best clip segment"""
+        """Use GPT-4 to analyze video, find best clip, and generate title/hook"""
         try:
-            logger.info("🤖 AI analyzing video...")
+            logger.info("🤖 AI analyzing video and generating title/hook...")
             
             # Get video duration using MoviePy
             try:
@@ -155,31 +158,37 @@ class ProductionShortsGenerator:
             except:
                 duration = video_info.get('duration', 300)  # Fallback
             
-            # Create analysis prompt
+            # Create enhanced analysis prompt
             prompt = f"""
-            Analyze this video and recommend the best 60-second segment for a YouTube Short.
+            Analyze this video and create the perfect YouTube Short package.
             
             Video Details:
             - Title: {video_info.get('title', 'Unknown')}
             - Duration: {duration} seconds
             - File size: {video_info.get('file_size_mb', 0)} MB
+            - Description: {video_info.get('description', 'No description')}
             
-            Please recommend:
-            1. Start time (in seconds)
-            2. End time (in seconds) 
-            3. Brief reason why this segment is engaging
+            Please provide:
+            1. Best 60-second segment (start and end times)
+            2. Catchy YouTube Short title (8-15 words max)
+            3. Engaging hook/description for the clip
+            4. Brief reason for segment selection
             
-            Rules:
+            Requirements:
             - Segment must be exactly 60 seconds
             - Start time must be at least 10 seconds from beginning
             - End time must be at least 10 seconds before the end
-            - Choose the most engaging/interesting part
+            - Title should be clickbait but accurate
+            - Hook should create curiosity and engagement
+            - Choose the most viral-worthy segment
             
             Respond in JSON format:
             {{
                 "start_time": 30.0,
                 "end_time": 90.0,
-                "reason": "High energy section with key points",
+                "generated_title": "This Secret Trick Will Blow Your Mind!",
+                "generated_hook": "You won't believe what happens next... this simple technique changed everything!",
+                "reason": "High energy section with key revelation",
                 "confidence": 0.85
             }}
             """
@@ -194,6 +203,8 @@ class ProductionShortsGenerator:
                 return {
                     "start_time": start_time,
                     "end_time": end_time,
+                    "generated_title": f"Amazing {video_info.get('title', 'Video')[:20]}... Clip!",
+                    "generated_hook": "This incredible moment will leave you speechless! Don't miss this viral-worthy segment.",
                     "reason": "Middle section selected (demo mode)",
                     "confidence": 0.75,
                     "transcript_sample": "Demo analysis - no OpenAI key provided"
@@ -202,11 +213,11 @@ class ProductionShortsGenerator:
             response = self.openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are an expert video editor specializing in creating engaging YouTube Shorts."},
+                    {"role": "system", "content": "You are an expert viral content creator and video editor specializing in YouTube Shorts that get millions of views."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
-                temperature=0.7
+                max_tokens=300,
+                temperature=0.8
             )
             
             # Parse AI response
@@ -238,17 +249,20 @@ class ProductionShortsGenerator:
                 result = {
                     "start_time": start_time,
                     "end_time": end_time,
-                    "reason": analysis.get('reason', 'AI selected segment'),
+                    "generated_title": analysis.get('generated_title', f"Amazing {video_info.get('title', 'Video')[:20]}..."),
+                    "generated_hook": analysis.get('generated_hook', "This incredible moment will leave you speechless!"),
+                    "reason": analysis.get('reason', 'AI selected engaging segment'),
                     "confidence": analysis.get('confidence', 0.8),
                     "transcript_sample": ai_text[:100] + "..." if len(ai_text) > 100 else ai_text
                 }
                 
                 logger.info(f"🎯 Found highlight: {start_time}s to {end_time}s")
+                logger.info(f"📝 Generated title: {result['generated_title']}")
                 return result
                 
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.warning(f"⚠️ AI response parsing failed: {e}")
-                # Fallback to middle section
+                # Fallback to middle section with generated content
                 mid_point = duration / 2
                 start_time = max(10, mid_point - 30)
                 end_time = min(duration - 10, start_time + 60)
@@ -256,14 +270,16 @@ class ProductionShortsGenerator:
                 return {
                     "start_time": start_time,
                     "end_time": end_time,
+                    "generated_title": f"Best Moments from {video_info.get('title', 'This Video')[:25]}...",
+                    "generated_hook": "The most engaging part of this video - you have to see this!",
                     "reason": "Fallback: middle section selected",
                     "confidence": 0.6,
-                    "transcript_sample": "AI analysis failed, using fallback"
+                    "transcript_sample": "AI analysis failed, using fallback with generated content"
                 }
                 
         except Exception as e:
             logger.error(f"❌ AI analysis failed: {e}")
-            # Fallback analysis
+            # Fallback analysis with generated content
             duration = video_info.get('duration', 300)
             start_time = max(10, duration * 0.3)  # Start at 30% through video
             end_time = min(duration - 10, start_time + 60)
@@ -271,6 +287,8 @@ class ProductionShortsGenerator:
             return {
                 "start_time": start_time,
                 "end_time": end_time,
+                "generated_title": f"Incredible {video_info.get('title', 'Video')[:30]}... Moments",
+                "generated_hook": "You won't believe what happens in this clip - prepare to be amazed!",
                 "reason": "Fallback analysis due to AI error",
                 "confidence": 0.5,
                 "transcript_sample": f"Error: {str(e)}"
@@ -358,7 +376,7 @@ class ProductionShortsGenerator:
             
             video_path = download_result["path"]
             
-            # Step 2: AI analysis
+            # Step 2: AI analysis with title/hook generation
             analysis = self.analyze_video_with_ai(video_path, download_result)
             
             # Step 3: Create short clip
@@ -371,7 +389,7 @@ class ProductionShortsGenerator:
             if "error" in clip_result:
                 return clip_result
             
-            # Step 4: Return complete result
+            # Step 4: Return complete result with generated content
             return {
                 "success": True,
                 "original_video": {
@@ -382,6 +400,11 @@ class ProductionShortsGenerator:
                     "file_size_mb": download_result["file_size_mb"]
                 },
                 "ai_analysis": analysis,
+                "generated_content": {
+                    "title": analysis["generated_title"],
+                    "hook": analysis["generated_hook"],
+                    "confidence": analysis["confidence"]
+                },
                 "short_clip": {
                     "path": clip_result["path"],
                     "duration": clip_result["duration"],
@@ -413,20 +436,22 @@ def health_check():
         "status": "healthy",
         "service": "ai-shorts-api-production",
         "timestamp": datetime.now().isoformat(),
-        "version": "2.0.0",
+        "version": "3.0.0",
         "features": [
             "YouTube download (yt-dlp)",
             "Google Drive download", 
             "AI analysis (GPT-4)",
+            "AI title generation",
+            "AI hook generation",
             "Video editing (MoviePy)",
             "9:16 aspect ratio conversion"
         ],
-        "message": "🚀 Production AI Shorts API ready!"
+        "message": "🚀 Production AI Shorts API with Title/Hook Generation ready!"
     })
 
 @app.route('/api/generate-short', methods=['POST'])
 def generate_short():
-    """Main endpoint to generate AI shorts"""
+    """Main endpoint to generate AI shorts with titles and hooks"""
     global generator
     
     try:
@@ -470,21 +495,29 @@ def generate_short():
         host = request.host
         scheme = 'https' if request.is_secure else 'http'
         
-        # Prepare final response
+        # Prepare final response with generated content
+        clip_filename = os.path.basename(result['short_clip']['path'])
+        
         response_data = {
             "success": True,
             "timestamp": datetime.now().isoformat(),
             "original_video": result["original_video"],
             "ai_analysis": result["ai_analysis"],
+            "generated_content": result["generated_content"],
             "short_clip": {
                 "duration": result["short_clip"]["duration"],
                 "file_size_mb": result["short_clip"]["file_size_mb"],
                 "format": result["short_clip"]["format"]
             },
-            "download_url": f"{scheme}://{host}/api/download/{os.path.basename(result['short_clip']['path'])}"
+            "download_url": f"{scheme}://{host}/api/download/{clip_filename}",
+            "ai_clip_filename": clip_filename,
+            "ai_clip_title": result["generated_content"]["title"],
+            "ai_clip_hook": result["generated_content"]["hook"]
         }
         
         logger.info("✅ Processing complete!")
+        logger.info(f"📝 Title: {result['generated_content']['title']}")
+        logger.info(f"🪝 Hook: {result['generated_content']['hook']}")
         return jsonify(response_data)
         
     except Exception as e:
@@ -512,9 +545,9 @@ def download_file(filename):
 def home():
     """Home page"""
     return jsonify({
-        "message": "🎬 AI Shorts API - Production",
+        "message": "🎬 AI Shorts API - Production with Title/Hook Generation",
         "status": "running",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "endpoints": {
             "health": "/api/health",
             "generate": "/api/generate-short",
@@ -529,6 +562,11 @@ def home():
             "youtube",
             "google_drive", 
             "drive (alias for google_drive)"
+        ],
+        "new_features": [
+            "AI-generated titles",
+            "AI-generated hooks",
+            "Enhanced viral content analysis"
         ]
     })
 
