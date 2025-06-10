@@ -345,13 +345,13 @@ class ProductionShortsGenerator:
         try:
             logger.info(f"🎬 Processing {video_type}: {url}")
             
-            # Step 1: Download video
+            # Step 1: Download video (accept both "drive" and "google_drive")
             if video_type == "youtube":
                 download_result = self.download_youtube_video(url)
-            elif video_type == "google_drive":
+            elif video_type in ["google_drive", "drive"]:
                 download_result = self.download_google_drive_video(url)
             else:
-                return {"error": f"Unsupported video type: {video_type}"}
+                return {"error": f"Unsupported video type: {video_type}. Supported types: youtube, google_drive, drive"}
             
             if "error" in download_result:
                 return download_result
@@ -442,7 +442,7 @@ def generate_short():
         if not video_url:
             return jsonify({"error": "video_url is required"}), 400
         
-        # Auto-detect video type
+        # Auto-detect video type and normalize values
         if video_type == 'auto':
             if "youtube.com" in video_url or "youtu.be" in video_url:
                 video_type = "youtube"
@@ -450,6 +450,10 @@ def generate_short():
                 video_type = "google_drive"
             else:
                 return jsonify({"error": "Unsupported video URL. Please use YouTube or Google Drive links."}), 400
+
+        # Normalize video_type values for backward compatibility
+        if video_type == "drive":
+            video_type = "google_drive"
         
         logger.info(f"📹 Processing: {video_url}")
         
@@ -519,6 +523,12 @@ def home():
         "supported_sources": [
             "YouTube (youtube.com, youtu.be)",
             "Google Drive (drive.google.com)"
+        ],
+        "supported_video_types": [
+            "auto (automatic detection)",
+            "youtube",
+            "google_drive", 
+            "drive (alias for google_drive)"
         ]
     })
 
